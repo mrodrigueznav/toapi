@@ -1,5 +1,6 @@
 import express from 'express';
 import compression from 'compression';
+import swaggerUi from 'swagger-ui-express';
 import { helmetMiddleware, corsMiddleware, getTrustProxy } from './config/security.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { requestLoggerMiddleware } from './middleware/requestLogger.js';
@@ -9,6 +10,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { incrementRequestsServed } from './controllers/health.controller.js';
 import env from './config/env.js';
 import routes from './routes/index.js';
+import openapiSpec from './docs/openapi.json' with { type: 'json' };
 
 const app = express();
 
@@ -19,7 +21,7 @@ if (getTrustProxy()) {
 app.disable('x-powered-by');
 app.use(helmetMiddleware());
 app.use(compression());
-app.use(requestIdMiddleware());
+app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware());
 app.use((req, res, next) => {
   incrementRequestsServed();
@@ -29,6 +31,10 @@ app.use(corsMiddleware());
 app.use(globalLimiter);
 
 app.use(express.json({ limit: env.BODY_LIMIT_BYTES }));
+
+// Documentación Swagger (pública, sin autorización)
+app.get('/api/v1/openapi.json', (req, res) => res.json(openapiSpec));
+app.use('/api/v1/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
 
 app.use('/api/v1', routes);
 

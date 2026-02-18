@@ -1,0 +1,131 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "tohuanti-api",
+    "version": "1.0.0",
+    "description": "API de backend para Tohuanti (multi-tenant, capturas SUA)."
+  },
+  "servers": [
+    { "url": "/api/v1" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "tags": ["Sistema"],
+        "responses": {
+          "200": {
+            "description": "Servidor operativo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" },
+                    "time": { "type": "string", "format": "date-time" },
+                    "requestId": { "type": "string" },
+                    "version": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "summary": "Usuario autenticado actual",
+        "tags": ["Auth"],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Datos del usuario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "clerkUserId": { "type": "string" },
+                    "email": { "type": "string", "format": "email" },
+                    "isAdmin": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "No autenticado" }
+        }
+      }
+    },
+    "/capturas/preview-xml": {
+      "post": {
+        "summary": "Previsualizar XML SUA (fase 1)",
+        "tags": ["Capturas"],
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "x-empresa-id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "x-sucursal-id",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tipoSUA": { "type": "string", "enum": ["IMSS", "RCV", "INFONAVIT"] },
+                  "xmlText": { "type": "string" }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tipoSUA": { "type": "string", "enum": ["IMSS", "RCV", "INFONAVIT"] },
+                  "xmlFile": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Datos extraídos para confirmación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "extracted": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}
+
