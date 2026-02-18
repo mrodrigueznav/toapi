@@ -1,5 +1,6 @@
 import { ApiError, ErrorCodes } from '../utils/errors.js';
 import { previewXml, commitCaptura } from '../services/captura.service.js';
+import { parseSUA } from '../services/suaParser.service.js';
 import { findCapturasList, findCapturaById } from '../repositories/captura.repo.js';
 import { getAccessibleCapturaScope } from '../services/access.service.js';
 import { getIdempotencyKey } from '../utils/idempotency.js';
@@ -17,6 +18,31 @@ export async function previewXmlHandler(req, res) {
   }
   const result = previewXml(tipoSUA, xmlText);
   res.json(result);
+}
+
+/**
+ * Parsea un archivo .sua (texto por bloques de 295 caracteres).
+ * GET: suaText en query (?suaText=...). POST: multipart 'suaFile' o body 'suaText'.
+ */
+export async function parseSuaHandler(req, res) {
+  let suaContent = req.query?.suaText ?? req.body?.suaText;
+  if (req.file && req.file.fieldname === 'suaFile') {
+    const fs = await import('fs/promises');
+    try {
+      suaContent = await fs.readFile(req.file.path, 'latin1');
+    } finally {
+      await fs.unlink(req.file.path).catch(() => {});
+    }
+  }
+  if (suaContent == null || (typeof suaContent === 'string' && !suaContent.trim())) {
+    throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, 'suaText (query for GET, or body) or suaFile (multipart) required');
+  }
+  try {
+    const result = parseSUA(suaContent);
+    res.json(result);
+  } catch (err) {
+    throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, err.message || 'Invalid SUA content');
+  }
 }
 
 const REQUIRED_FIELDS = ['paymentImage', 'suaFile', 'wordDoc', 'pdfDoc', 'xmlFile'];

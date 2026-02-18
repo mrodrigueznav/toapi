@@ -32,7 +32,7 @@ function requiredUrl(msg) {
 }
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  NODE_ENV: z.enum(['development', 'developmentx', 'production', 'test']).default('development'),
   PORT: z.string().transform(Number).pipe(z.number().min(1)).default('3000'),
   DATABASE_URL: requiredString('DATABASE_URL is required'),
   SUPABASE_URL: requiredUrl('SUPABASE_URL must be a valid URL'),
