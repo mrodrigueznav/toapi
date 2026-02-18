@@ -1,18 +1,18 @@
 # tohuanti-api
 
-Production-grade, enterprise-ready backend API for Tohuanti: multi-tenant captura management with two-phase confirmation, Clerk auth, Supabase Storage, and PostgreSQL.
+API backend lista para producción para Tohuanti: gestión multi-tenant de capturas con confirmación en dos fases, autenticación con Clerk, almacenamiento en Supabase y PostgreSQL.
 
 ## Stack
 
 - **Runtime:** Node.js 22+
 - **Framework:** Express.js (ESM)
 - **ORM:** Sequelize (PostgreSQL)
-- **Database:** Supabase Postgres (standard connection string; no Supabase JS for DB)
-- **Storage:** Supabase Storage (`@supabase/supabase-js`, service-role, server-side only)
-- **Auth:** Clerk (sign-in only; users provisioned by admins)
-- **Security:** helmet, CORS allowlist, rate limiting, request IDs, structured logs, redaction, problem+json errors
+- **Base de datos:** Supabase Postgres (cadena de conexión estándar; no se usa Supabase JS para la DB)
+- **Almacenamiento:** Supabase Storage (`@supabase/supabase-js`, service-role, solo servidor)
+- **Auth:** Clerk (solo inicio de sesión; los usuarios los crean los admins)
+- **Seguridad:** helmet, lista blanca CORS, rate limiting, request IDs, logs estructurados, redacción de datos sensibles, errores en problem+json
 
-## Project structure
+## Estructura del proyecto
 
 ```
 /src
@@ -25,99 +25,101 @@ Production-grade, enterprise-ready backend API for Tohuanti: multi-tenant captur
   /controllers  health, me, catalog, captura, admin
   /routes       health, me, catalog, capturas, admin
   /utils        asyncHandler, errors, dates, idempotency, sanitize
-/migrations     Custom ESM migration runner + migration files
+/migrations     Runner ESM de migraciones + archivos de migración
 /scripts        migrate.js, seed.js
-/tests          Basic supertest test for /health
+/tests          Test básico con supertest para /health
 ```
 
-## Environment variables
+## Variables de entorno
 
-### Required
+### Requeridas
 
-| Variable | Description |
+| Variable | Descripción |
 |----------|-------------|
-| `NODE_ENV` | `development`, `production`, or `test` |
-| `PORT` | Server port (default 3000) |
-| `DATABASE_URL` | PostgreSQL connection string (Supabase: Settings → Database → Connection string, use Transaction pooler or Direct) |
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only; never expose to client) |
-| `STORAGE_BUCKET` | Storage bucket name (default `tohuanti`) |
-| `CLERK_JWKS_URL` | Clerk JWKS URL (e.g. `https://<frontend-api>.clerk.accounts.dev/.well-known/jwks.json`) |
+| `NODE_ENV` | `development`, `production` o `test` |
+| `PORT` | Puerto del servidor (por defecto 3000) |
+| `DATABASE_URL` | Cadena de conexión PostgreSQL (Supabase: Ajustes → Database → Connection string; Transaction pooler o Direct) |
+| `SUPABASE_URL` | URL del proyecto Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clave de servicio (service role) de Supabase; solo servidor, no exponer al cliente |
+| `STORAGE_BUCKET` | Nombre del bucket de Storage (por defecto `tohuanti`) |
+| `CLERK_JWKS_URL` | URL JWKS de Clerk (ej. `https://<frontend-api>.clerk.accounts.dev/.well-known/jwks.json`) |
 
-### Optional
+### Opcionales
 
-| Variable | Description |
+| Variable | Descripción |
 |----------|-------------|
-| `CLERK_ISSUER` | Clerk JWT issuer (for strict verification) |
-| `CLERK_AUDIENCE` | Clerk JWT audience |
-| `CORS_ORIGINS` | Comma-separated allowed origins (e.g. `https://app.example.com`) |
-| `TRUST_PROXY` | Set to `true` or `1` behind reverse proxy |
-| `BODY_LIMIT` | JSON body limit (default `2mb`; does not apply to multipart) |
-| `RATE_LIMIT_WINDOW_MS` | Rate limit window (default 60000) |
-| `RATE_LIMIT_MAX` | Global max requests per window (default 100) |
-| `XML_RATE_LIMIT_MAX` | Preview XML endpoint max (default 20) |
-| `ADMIN_RATE_LIMIT_MAX` | Admin routes max (default 50) |
-| `SIGNED_URL_EXPIRES_IN` | Signed URL expiry seconds (default 3600) |
-| `SSL_REJECT_UNAUTHORIZED` | Set to `false` only for local Postgres without SSL |
-| `LOG_LEVEL` | Pino level: trace, debug, info, warn, error, fatal |
-| `CLERK_ADMIN_USER_ID` | Clerk user ID for initial admin (used by seed) |
-| `CLERK_ADMIN_EMAIL` | Email for initial admin (used by seed) |
+| `CLERK_PUBLISHABLE_KEY` | Clave pública de Clerk |
+| `CLERK_SECRET_KEY` | Clave secreta de Clerk |
+| `CLERK_ISSUER` | Issuer del JWT de Clerk (verificación estricta) |
+| `CLERK_AUDIENCE` | Audience del JWT de Clerk |
+| `CORS_ORIGINS` | Orígenes permitidos separados por comas (ej. `https://app.ejemplo.com`) |
+| `TRUST_PROXY` | Poner `true` o `1` si hay proxy inverso delante |
+| `BODY_LIMIT` | Límite del body JSON (por defecto `2mb`; no aplica a multipart) |
+| `RATE_LIMIT_WINDOW_MS` | Ventana del rate limit en ms (por defecto 60000) |
+| `RATE_LIMIT_MAX` | Máximo global de peticiones por ventana (por defecto 100) |
+| `XML_RATE_LIMIT_MAX` | Máximo para el endpoint de preview XML (por defecto 20) |
+| `ADMIN_RATE_LIMIT_MAX` | Máximo para rutas de admin (por defecto 50) |
+| `SIGNED_URL_EXPIRES_IN` | Segundos de validez de las URLs firmadas (por defecto 3600) |
+| `SSL_REJECT_UNAUTHORIZED` | Poner `false` solo si usas Postgres local sin SSL válido |
+| `LOG_LEVEL` | Nivel de Pino: trace, debug, info, warn, error, fatal |
+| `CLERK_ADMIN_USER_ID` | ID de usuario Clerk del admin inicial (usado por seed) |
+| `CLERK_ADMIN_EMAIL` | Email del admin inicial (usado por seed) |
 
-## Setup
+## Configuración
 
-1. **Install dependencies**
+1. **Instalar dependencias**
 
    ```bash
    npm install
    ```
 
-2. **Configure environment**
+2. **Configurar entorno**
 
-   Create a `.env` file with required variables (see above). For Supabase Postgres use the connection string from Project Settings → Database. For Clerk, use the JWKS URL from your Clerk application (sign-in only; no sign-up in app).
+   Crea un archivo `.env` con las variables requeridas (ver arriba). Para Supabase Postgres usa la cadena de conexión de Ajustes del proyecto → Database. Para Clerk, usa la URL JWKS de tu aplicación Clerk (solo inicio de sesión; sin registro en la app).
 
-3. **Run migrations**
+3. **Ejecutar migraciones**
 
    ```bash
    npm run migrate
    ```
 
-   Uses the custom ESM migration runner in `scripts/migrate.js`; applies all pending migrations from `migrations/` in filename order.
+   Usa el runner ESM en `scripts/migrate.js`; aplica las migraciones pendientes de `migrations/` en orden por nombre de archivo.
 
-4. **Seed (optional)**
+4. **Seed (opcional)**
 
    ```bash
    npm run seed
    ```
 
-   Creates an initial admin user (using `CLERK_ADMIN_USER_ID` and `CLERK_ADMIN_EMAIL`), sample empresas/sucursales, and assigns the admin to them. If `CLERK_ADMIN_USER_ID` is not set, a placeholder admin is created for local dev.
+   Crea un usuario admin inicial (con `CLERK_ADMIN_USER_ID` y `CLERK_ADMIN_EMAIL`), empresas/sucursales de ejemplo y asigna el admin a ellas. Si no se define `CLERK_ADMIN_USER_ID`, se crea un admin de prueba para desarrollo local.
 
-5. **Start**
+5. **Arrancar**
 
    ```bash
    npm run dev    # nodemon
-   npm start      # production
+   npm start      # producción
    ```
 
-## API base and endpoints
+## Base y endpoints de la API
 
-Base path: **`/api/v1`**
+Ruta base: **`/api/v1`**
 
-- **GET /health** – Health check (`status`, `time`, `requestId`, `version`)
-- **GET /metrics** – Lightweight metrics (uptime, memory, request count)
-- **GET /me** – Current user (auth required): `clerkUserId`, `email`, `isAdmin`, `empresas`, `sucursalesByEmpresa`
-- **GET /catalog/empresas** – List empresas (auth; admin: all, user: assigned)
-- **GET /catalog/empresas/:empresaId/sucursales** – List sucursales for empresa (auth; tenant access rules)
-- **POST /capturas/preview-xml** – Phase 1: parse XML, return extracted data (auth + tenant headers; no persistence)
-- **POST /capturas/commit** – Phase 2: upload 5 files, create captura (auth + tenant; optional `x-idempotency-key`)
-- **GET /capturas/recent** – List capturas with filters (auth; admin: all, user: accessible only)
-- **GET /capturas/:id** – Get one captura (auth; tenant access)
-- **Admin routes** (auth + admin): empresas, sucursales, users, assignments, audit log
+- **GET /health** – Comprobación de estado (`status`, `time`, `requestId`, `version`)
+- **GET /metrics** – Métricas ligeras (uptime, memoria, número de peticiones)
+- **GET /me** – Usuario actual (requiere auth): `clerkUserId`, `email`, `isAdmin`, `empresas`, `sucursalesByEmpresa`
+- **GET /catalog/empresas** – Listar empresas (auth; admin: todas, usuario: asignadas)
+- **GET /catalog/empresas/:empresaId/sucursales** – Listar sucursales de una empresa (auth; reglas de tenant)
+- **POST /capturas/preview-xml** – Fase 1: parsear XML y devolver datos extraídos (auth + cabeceras de tenant; sin persistir)
+- **POST /capturas/commit** – Fase 2: subir 5 archivos y crear captura (auth + tenant; opcional `x-idempotency-key`)
+- **GET /capturas/recent** – Listar capturas con filtros (auth; admin: todas, usuario: solo accesibles)
+- **GET /capturas/:id** – Obtener una captura (auth; acceso por tenant)
+- **Rutas de admin** (auth + admin): empresas, sucursales, usuarios, asignaciones, log de auditoría
 
-All tenant-scoped requests require headers: **`x-empresa-id`**, **`x-sucursal-id`** (UUIDs).
+Las peticiones con tenant requieren las cabeceras **`x-empresa-id`** y **`x-sucursal-id`** (UUIDs).
 
-Errors use **`application/problem+json`** with `type`, `title`, `status`, `detail`, `instance`, `requestId`, `code`.
+Los errores se devuelven en **`application/problem+json`** con `type`, `title`, `status`, `detail`, `instance`, `requestId`, `code`.
 
-## Example requests
+## Ejemplos de peticiones
 
 ### Health
 
@@ -144,27 +146,27 @@ curl -X POST http://localhost:3000/api/v1/capturas/preview-xml \
   -H "x-empresa-id: <UUID>" \
   -H "x-sucursal-id: <UUID>" \
   -F "tipoSUA=IMSS" \
-  -F "xmlFile=@/path/to/file.xml"
+  -F "xmlFile=@/ruta/al/archivo.xml"
 ```
 
-### Commit (multipart, 5 files)
+### Commit (multipart, 5 archivos)
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/capturas/commit \
   -H "Authorization: Bearer <CLERK_JWT>" \
   -H "x-empresa-id: <UUID>" \
   -H "x-sucursal-id: <UUID>" \
-  -H "x-idempotency-key: optional-key-123" \
+  -H "x-idempotency-key: clave-opcional-123" \
   -F "tipoSUA=IMSS" \
-  -F "data={\"periodo\":\"2025-01\",\"rfc\":\"..."}" \
-  -F "paymentImage=@payment.png" \
+  -F "data={\"periodo\":\"2025-01\",\"rfc\":\"...\"}" \
+  -F "paymentImage=@pago.png" \
   -F "suaFile=@sua.txt" \
   -F "wordDoc=@doc.docx" \
   -F "pdfDoc=@doc.pdf" \
-  -F "xmlFile=@file.xml"
+  -F "xmlFile=@archivo.xml"
 ```
 
-### Admin: create empresa
+### Admin: crear empresa
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/admin/empresas \
@@ -173,13 +175,13 @@ curl -X POST http://localhost:3000/api/v1/admin/empresas \
   -d '{"nombre":"Mi Empresa"}'
 ```
 
-## Architecture overview
+## Resumen de arquitectura
 
-- **Layers:** routes → controllers → services → repositories/models. Clear boundaries; no business logic in routes.
-- **Two-phase captura:** Preview returns parsed data only (no DB, no storage). Commit uploads all 5 files to Supabase Storage, then creates the Captura record; on upload failure, already-uploaded files are removed and no record is created.
-- **Tenant access:** Admin sees all. Non-admin must have UserEmpresa; if no UserSucursal for that empresa, they see all sucursales of that empresa; otherwise only assigned sucursales.
-- **Idempotency:** Optional header `x-idempotency-key` on commit; same actor + tenant + key returns the existing captura.
-- **File handling:** No application-level file size limit. Multer streams to `/tmp`, then files are uploaded to Supabase and temp files deleted. **Infrastructure limits:** reverse proxies (nginx, Netlify, Azure App Service, etc.) may impose a max request body size; configure them (e.g. `client_max_body_size` in nginx) if you need to allow very large uploads.
+- **Capas:** routes → controllers → services → repositories/models. Límites claros; sin lógica de negocio en rutas.
+- **Captura en dos fases:** Preview solo devuelve datos parseados (sin DB ni storage). Commit sube los 5 archivos a Supabase Storage, crea el registro Captura y, si falla alguna subida, borra los ya subidos y no crea registro.
+- **Acceso por tenant:** El admin ve todo. Un usuario no admin debe tener UserEmpresa; si no tiene UserSucursal para esa empresa, ve todas las sucursales de esa empresa; si tiene, solo las asignadas.
+- **Idempotencia:** Cabecera opcional `x-idempotency-key` en commit; mismo actor + tenant + clave devuelve la captura ya existente.
+- **Archivos:** No hay límite de tamaño a nivel de aplicación. Multer escribe en `/tmp`, luego se suben a Supabase y se borran los temporales. **Límites de infraestructura:** proxies inversos (nginx, Netlify, Azure App Service, etc.) pueden imponer un tamaño máximo de request; configúralos (ej. `client_max_body_size` en nginx) si necesitas subidas muy grandes.
 
 ## Tests
 
@@ -187,8 +189,8 @@ curl -X POST http://localhost:3000/api/v1/admin/empresas \
 npm test
 ```
 
-Runs the health check test (minimal app that matches the `/api/v1/health` response contract; does not require DB or Clerk).
+Ejecuta el test de health (app mínima que cumple el contrato de `/api/v1/health`; no requiere DB ni Clerk).
 
-## Graceful shutdown
+## Cierre ordenado
 
-On `SIGTERM`/`SIGINT`, the server stops accepting new connections and closes the database pool before exiting.
+Con `SIGTERM`/`SIGINT`, el servidor deja de aceptar conexiones y cierra el pool de la base de datos antes de salir.
