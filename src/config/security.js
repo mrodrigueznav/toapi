@@ -13,6 +13,15 @@ export function helmetMiddleware() {
 }
 
 export function corsMiddleware() {
+  const raw = (env.CORS_ORIGINS || '').trim();
+  if (raw === '*') {
+    return cors({
+      origin: true,
+      credentials: false,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-request-id', 'x-empresa-id', 'x-sucursal-id', 'x-idempotency-key'],
+    });
+  }
   const origins = env.CORS_ORIGINS_LIST;
   if (origins.length === 0) {
     return cors({ origin: false, credentials: false });
