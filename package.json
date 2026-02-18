@@ -9,7 +9,10 @@
     "start": "node src/server.js",
     "migrate": "node scripts/migrate.js",
     "seed": "node scripts/seed.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "azure:env:set": "bash scripts/azure-env-set.sh",
+    "azure:restart": "bash scripts/azure-app-manage.sh restart",
+    "azure:list": "bash scripts/azure-app-manage.sh list"
   },
   "engines": {
     "node": ">=22"

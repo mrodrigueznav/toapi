@@ -1,22 +1,47 @@
 /**
  * Environment loading, validation, and defaults. Fail-fast on missing required vars.
+ * En Azure: App Service > Configuration > Application settings.
  */
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
 dotenv.config();
 
+// Requerido y no vacío; en Azure las vars no definidas o vacías fallan con mensaje claro
+function requiredString(msg) {
+  return z.preprocess(
+    (v) => (v === '' || v == null ? undefined : String(v).trim()),
+    z.string({ required_error: msg }).min(1, msg)
+  );
+}
+function requiredUrl(msg) {
+  return z.preprocess(
+    (v) => (v === '' || v == null ? undefined : String(v).trim()),
+    z
+      .string({ required_error: msg })
+      .min(1, msg)
+      .refine((s) => {
+        try {
+          new URL(s);
+          return true;
+        } catch {
+          return false;
+        }
+      }, { message: msg })
+  );
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().transform(Number).pipe(z.number().min(1)).default('3000'),
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL'),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY is required'),
+  DATABASE_URL: requiredString('DATABASE_URL is required'),
+  SUPABASE_URL: requiredUrl('SUPABASE_URL must be a valid URL'),
+  SUPABASE_SERVICE_ROLE_KEY: requiredString('SUPABASE_SERVICE_ROLE_KEY is required'),
   STORAGE_BUCKET: z.string().default('tohuanti'),
   // Clerk
   CLERK_PUBLISHABLE_KEY: z.string().optional(),
   CLERK_SECRET_KEY: z.string().optional(),
-  CLERK_JWKS_URL: z.string().url('CLERK_JWKS_URL is required'),
+  CLERK_JWKS_URL: requiredUrl('CLERK_JWKS_URL is required'),
   CLERK_ISSUER: z.string().optional(),
   CLERK_AUDIENCE: z.string().optional(),
   // HTTP / security
@@ -49,7 +74,15 @@ let env;
 try {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
-    console.error('Environment validation failed:', parsed.error.flatten());
+    const flat = parsed.error.flatten();
+    console.error('Environment validation failed:', flat.fieldErrors);
+    const missing = Object.keys(flat.fieldErrors || {}).filter((k) => (flat.fieldErrors[k] || []).length > 0);
+    if (missing.length > 0) {
+      console.error('Missing or invalid:', missing.join(', '));
+      if (process.env.WEBSITE_SITE_NAME) {
+        console.error('Azure: set these in App Service > Configuration > Application settings (npm run azure:env:set -- <webapp-name>)');
+      }
+    }
     process.exit(1);
   }
   env = parsed.data;
