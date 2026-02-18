@@ -21,7 +21,7 @@ export function corsMiddleware() {
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
       if (origins.includes(origin)) return cb(null, true);
-      cb(new Error('Not allowed by CORS'));
+      cb(new Error(`Not allowed by CORS: ${origin}`));
     },
     credentials: false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
