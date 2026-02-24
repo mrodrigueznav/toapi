@@ -39,10 +39,10 @@ router.post(
   tenantContext,
   upload.fields([
     { name: 'paymentImage', maxCount: 1 },
+    { name: 'imagenPago', maxCount: 1 },
     { name: 'suaFile', maxCount: 1 },
-    { name: 'wordDoc', maxCount: 1 },
     { name: 'pdfDoc', maxCount: 1 },
-    { name: 'xmlFile', maxCount: 1 },
+    { name: 'archivoPdf', maxCount: 1 },
   ]),
   asyncHandler(capturaController.commitHandler)
 );

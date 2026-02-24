@@ -1,5 +1,5 @@
 import { ApiError, ErrorCodes } from '../utils/errors.js';
-import { previewXml, commitCaptura } from '../services/captura.service.js';
+import { previewXml, commitCaptura, commitCapturaBatch } from '../services/captura.service.js';
 import { parseSUA } from '../services/suaParser.service.js';
 import { findCapturasList, findCapturaById } from '../repositories/captura.repo.js';
 import { getAccessibleCapturaScope } from '../services/access.service.js';
@@ -45,10 +45,70 @@ export async function parseSuaHandler(req, res) {
   }
 }
 
-const REQUIRED_FIELDS = ['paymentImage', 'suaFile', 'wordDoc', 'pdfDoc', 'xmlFile'];
+const REQUIRED_FILE_SLOTS = [
+  { keys: ['paymentImage', 'imagenPago'], as: 'paymentImage' },
+  { keys: ['suaFile'], as: 'suaFile' },
+  { keys: ['pdfDoc', 'archivoPdf'], as: 'pdfDoc' },
+];
+
+function normalizeFiles(reqFiles) {
+  const files = {};
+  for (const slot of REQUIRED_FILE_SLOTS) {
+    let file = null;
+    for (const key of slot.keys) {
+      const field = reqFiles?.[key];
+      const f = Array.isArray(field) ? field[0] : field;
+      if (f?.path) {
+        file = f;
+        break;
+      }
+    }
+    if (!file) {
+      throw new ApiError(
+        400,
+        ErrorCodes.VALIDATION_ERROR,
+        `Missing required file: ${slot.keys.join(' or ')}`
+      );
+    }
+    files[slot.as] = file;
+  }
+  return files;
+}
 
 export async function commitHandler(req, res) {
   const { empresaId, sucursalId } = req.tenant;
+  const files = normalizeFiles(req.files);
+
+  let payload = req.body?.payload;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, 'payload must be valid JSON');
+    }
+  }
+
+  const isBatch =
+    payload &&
+    typeof payload === 'object' &&
+    'imss' in payload &&
+    'rcv' in payload &&
+    'infonavit' in payload;
+
+  if (isBatch) {
+    const items = await commitCapturaBatch({
+      empresaId,
+      sucursalId,
+      payload,
+      files,
+      createdBy: req.user.clerkUserId,
+      idempotencyKey: getIdempotencyKey(req),
+      requestId: req.id,
+      req,
+    });
+    return res.status(201).json({ items });
+  }
+
   const tipoSUA = req.body?.tipoSUA;
   let data = req.body?.data;
   if (typeof data === 'string') {
@@ -58,17 +118,14 @@ export async function commitHandler(req, res) {
       throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, 'data must be valid JSON');
     }
   }
-  if (!tipoSUA) throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, 'tipoSUA required');
-
-  const files = {};
-  for (const key of REQUIRED_FIELDS) {
-    const field = req.files?.[key];
-    const file = Array.isArray(field) ? field[0] : field;
-    if (!file || !file.path) {
-      throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, `Missing required file: ${key}`);
-    }
-    files[key] = file;
+  if (!tipoSUA) {
+    throw new ApiError(
+      400,
+      ErrorCodes.VALIDATION_ERROR,
+      'tipoSUA required for single commit, or send payload with imss, rcv and infonavit for batch'
+    );
   }
+
   const idempotencyKey = getIdempotencyKey(req);
   const captura = await commitCaptura({
     empresaId,
