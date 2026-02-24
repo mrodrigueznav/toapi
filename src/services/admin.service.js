@@ -6,6 +6,7 @@ import * as empresaRepo from '../repositories/empresa.repo.js';
 import * as userRepo from '../repositories/user.repo.js';
 import { logAudit } from './audit.service.js';
 import { normalizeEmail } from '../utils/sanitize.js';
+import { createClerkUser } from './clerk.service.js';
 
 export async function createEmpresa(data, auditContext) {
   const empresa = await empresaRepo.createEmpresa({ nombre: data.nombre, isActive: true });
@@ -115,12 +116,40 @@ export async function deactivateSucursal(id, auditContext) {
   return sucursal;
 }
 
+/**
+ * Create user: optionally in Clerk (username + password) then always in our DB.
+ * - If username is provided and CLERK_SECRET_KEY is set: create in Clerk (username sign-in), then in DB with returned clerkUserId.
+ * - If only clerkUserId is provided: create only in DB (provision existing Clerk user).
+ */
 export async function createUser(data, auditContext) {
-  const email = data.email ? normalizeEmail(data.email) : null;
-  const existing = await userRepo.findUserByClerkOrEmail(data.clerkUserId, email);
+  let clerkUserId = data.clerkUserId;
+  let email = data.email ? normalizeEmail(data.email) : null;
+
+  if (data.username && !clerkUserId) {
+    try {
+      const clerkUser = await createClerkUser({
+        username: data.username,
+        password: data.password,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+      });
+      clerkUserId = clerkUser.id;
+      if (clerkUser.email) email = clerkUser.email;
+    } catch (err) {
+      throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, err.message || 'Failed to create user in Clerk');
+    }
+  }
+
+  if (!clerkUserId) {
+    throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, 'username or clerkUserId is required');
+  }
+
+  const existing = await userRepo.findUserByClerkOrEmail(clerkUserId, email);
   if (existing) return existing;
+
   const user = await userRepo.createUser({
-    clerkUserId: data.clerkUserId,
+    clerkUserId,
     email: email || null,
     isAdmin: data.isAdmin === true,
     isActive: true,
@@ -231,6 +260,14 @@ export async function addUserSucursal(userId, sucursalId, auditContext) {
   if (!user) throw new ApiError(404, ErrorCodes.NOT_FOUND, 'User not found');
   const sucursal = await empresaRepo.findSucursalById(sucursalId);
   if (!sucursal) throw new ApiError(404, ErrorCodes.NOT_FOUND, 'Sucursal not found');
+  const userEmpresaIds = await userRepo.getUserEmpresaIds(userId);
+  if (!user.isAdmin && !userEmpresaIds.includes(sucursal.empresaId)) {
+    throw new ApiError(
+      400,
+      ErrorCodes.VALIDATION_ERROR,
+      'User must have the empresa assigned before assigning a sucursal of that empresa'
+    );
+  }
   await userRepo.addUserSucursal(userId, sucursalId);
   await logAudit({
     ...auditContext,

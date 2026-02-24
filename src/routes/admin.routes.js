@@ -63,15 +63,28 @@ router.put(
 router.post(
   '/admin/users',
   validate({
-    body: z.object({
-      clerkUserId: z.string().min(1),
-      email: z.string().email().optional(),
-      isAdmin: z.boolean().optional(),
-    }),
+    body: z
+      .object({
+        username: z.string().min(1).optional(),
+        password: z.string().min(8).optional(),
+        email: z.string().email().optional(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        clerkUserId: z.string().min(1).optional(),
+        isAdmin: z.boolean().optional(),
+      })
+      .refine((data) => data.username ?? data.clerkUserId, {
+        message: 'username or clerkUserId is required',
+      }),
   }),
   asyncHandler(adminController.createUser)
 );
 router.get('/admin/users', asyncHandler(adminController.listUsers));
+router.get(
+  '/admin/users/:id',
+  validate({ params: z.object({ id: uuid }) }),
+  asyncHandler(adminController.getUserById)
+);
 router.put(
   '/admin/users/:id/activate',
   validate({ params: z.object({ id: uuid }) }),

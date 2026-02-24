@@ -1,5 +1,7 @@
 import * as adminService from '../services/admin.service.js';
 import { findAuditLogsList } from '../repositories/audit.repo.js';
+import { getUserById as getUserIdFromRepo } from '../repositories/user.repo.js';
+import { ApiError, ErrorCodes } from '../utils/errors.js';
 
 function auditContext(req) {
   return {
@@ -64,6 +66,12 @@ export async function listUsers(req, res) {
     offset: parseInt(offset, 10) || 0,
   });
   res.json(result);
+}
+
+export async function getUserById(req, res) {
+  const user = await getUserIdFromRepo(req.params.id);
+  if (!user) throw new ApiError(404, ErrorCodes.NOT_FOUND, 'User not found');
+  res.json(user);
 }
 
 export async function activateUser(req, res) {

@@ -1,51 +1,80 @@
 /**
- * SUA (.SUA) parsing and normalization
- * - Fixed-length records (295 chars) concatenated (no newlines)
- * - Record type is first 2 chars: 02/03/04/05/06...
+ * suaParser.service.js (SUA-only, self-contained)
  *
- * Extracts:
- * - periodo (YYYY-MM), registroPatronal, rfc, razonSocial, folioSUA
- * - tipoPago + fechaAplicacion (best-effort from record 06)
- * - IMSS concepts (from record 05, validated against common “A10 resumen” layout)
- * - Totals IMSS/AFORE + INFONAVIT and TOTAL (from record 06)
+ * ✅ No depende de otros archivos.
+ * ✅ Parsea .SUA (records 295 concatenados).
+ * ✅ Retorna respuesta separada por formulario:
+ *    - imss
+ *    - rcv
+ *    - infonavit
+ * ✅ Cada campo retorna { value, source } y usa "" cuando aplica.
+ *
+ * IMPORTANTE:
+ * - Lee el archivo .SUA como latin1 para no romper posiciones:
+ *   fs.readFileSync(path, 'latin1') o Buffer->toString('latin1')
  */
 
 const RECORD_LEN = 295;
 
+// ---------------------
+// Helpers básicos
+// ---------------------
 function str(input) {
   return (input ?? '').toString();
 }
-
 function trim(v) {
   return (v ?? '').toString().trim();
 }
-
 function sliceTrim(s, start, end) {
   return trim(s.slice(start, end));
 }
-
 function moneyFromInt(n, decimals) {
   if (!Number.isFinite(n)) return 0;
   return n / Math.pow(10, decimals);
 }
-
 function toPeriodoYYYYMM(periodoRaw) {
   if (!/^\d{6}$/.test(periodoRaw)) return '';
   return `${periodoRaw.slice(0, 4)}-${periodoRaw.slice(4, 6)}`;
 }
-
 function splitFixedRecords(content, len = RECORD_LEN) {
   const out = [];
-  for (let i = 0; i < content.length; i += len) {
-    out.push(content.slice(i, i + len));
-  }
+  for (let i = 0; i < content.length; i += len) out.push(content.slice(i, i + len));
   return out;
 }
 
+function field(value, source) {
+  const v = value == null || String(value).trim() === '' ? '' : value;
+  const s = source == null || String(source).trim() === '' ? '' : source;
+  return { value: v, source: s };
+}
+function nfield(num, source) {
+  if (num == null || Number.isNaN(Number(num))) return field('', '');
+  return field(Number(num), source);
+}
+function normalizeTipoPago(tipoPago) {
+  const t = String(tipoPago || '').trim().toUpperCase();
+  if (!t) return '';
+  // Ajusta este mapeo si tu negocio lo requiere
+  if (t === 'W300') return 'PAGO OPORTUNO';
+  return t;
+}
+function deriveAnioMes(periodoYYYYMM) {
+  const p = String(periodoYYYYMM || '');
+  const m = p.match(/^(\d{4})-(\d{2})$/);
+  if (!m) return { anio: '', mes: '' };
+  return { anio: m[1], mes: m[2] };
+}
+function deriveBimestre(mesStr) {
+  const m = Number(mesStr);
+  if (!Number.isFinite(m) || m < 1 || m > 12) return '';
+  return String(Math.ceil(m / 2)).padStart(2, '0'); // 01..06
+}
+
+// ---------------------
+// Parsing Record 05 (IMSS agregado)
+// ---------------------
 /**
- * Record 05 IMSS breakdown
- *
- * This parser expects, in order, 10 fields of 9 digits starting near the right side:
+ * Espera (en tu layout validado previamente) 10 campos de 9 dígitos:
  * 1 cuotaFija                       /10000
  * 2 excedente                       /10000
  * 3 prestacionesDinero              /10000
@@ -56,8 +85,6 @@ function splitFixedRecords(content, len = RECORD_LEN) {
  * 8 subtotalIMSS                    /100
  * 9 actualizacionIMSS               /100
  * 10 recargosIMSS                   /100
- *
- * If it can’t confidently parse, returns zeros (tolerant).
  */
 function parseRecord05IMSS(r05) {
   const zero = {
@@ -72,16 +99,14 @@ function parseRecord05IMSS(r05) {
     actualizacionIMSS: 0,
     recargosIMSS: 0,
   };
-
   if (!r05) return zero;
 
-  // In many SUA files, numeric block begins after pos 38, aligned to the right.
+  // bloque numérico usualmente a partir de pos 38 y alineado a la derecha
   const body = r05.slice(38).replace(/\s+$/g, '');
   const firstNonZero = body.search(/[1-9]/);
   const start = firstNonZero >= 0 ? firstNonZero : 0;
   const seq = body.slice(start);
 
-  // Read 10 x 9-digit numeric fields
   const fields = [];
   for (let i = 0; i < 10; i++) {
     const part = seq.slice(i * 9, i * 9 + 9);
@@ -116,17 +141,20 @@ function parseRecord05IMSS(r05) {
   };
 }
 
+// ---------------------
+// Parsing Record 06 (totales + tipoPago + fechaAplicacion)
+// ---------------------
 /**
- * Record 06 parsing:
- * - tipoPago: slice(68,72) (example: "W300")
- * - fechaAplicacion: YYYYMMDD at slice(58,66) -> YYYY-MM-DD
- * - totals: sequence of 12-digit numbers from pos 72, scaled /100
- *   We use first 4:
- *     1 totalIMSS
- *     2 totalAFORE
- *     3 totalVIV
- *     4 totalACV
- *   totalINFONAVIT = totalVIV + totalACV
+ * Layout usado:
+ * - tipoPago: slice(68,72) (ej "W300")
+ * - fechaAplicacion: YYYYMMDD en slice(58,66) -> YYYY-MM-DD
+ * - Totales: secuencia de 12 dígitos desde pos 72, escala /100
+ *   usamos primeros 4:
+ *   1 totalIMSS
+ *   2 totalAFORE
+ *   3 totalVIV
+ *   4 totalACV
+ * totalINFONAVIT = VIV + ACV
  */
 function parseRecord06(r06) {
   const out = {
@@ -164,13 +192,10 @@ function parseRecord06(r06) {
   return out;
 }
 
-/**
- * Parse SUA and return normalized fields + debug counts.
- * IMPORTANT:
- * - When reading file from disk use latin1:
- *   fs.readFileSync(path, 'latin1')
- */
-export function parseSUA(suaTextOrBuffer) {
+// ---------------------
+// Base parse SUA (02/05/06 + conteos)
+// ---------------------
+function parseSUAInternal(suaTextOrBuffer) {
   if (!suaTextOrBuffer) {
     return {
       periodo: '',
@@ -187,15 +212,12 @@ export function parseSUA(suaTextOrBuffer) {
       totalAPagar: 0,
       trabajadoresCount: 0,
       recordsCountByType: {},
-      data: {},
     };
   }
 
-  // Keep fixed positions: latin1 is critical if buffer is used
-  const content =
-    Buffer.isBuffer(suaTextOrBuffer)
-      ? suaTextOrBuffer.toString('latin1')
-      : str(suaTextOrBuffer);
+  const content = Buffer.isBuffer(suaTextOrBuffer)
+    ? suaTextOrBuffer.toString('latin1')
+    : str(suaTextOrBuffer);
 
   if (content.length < RECORD_LEN || content.length % RECORD_LEN !== 0) {
     throw new Error(`Invalid SUA: length=${content.length} must be multiple of ${RECORD_LEN}`);
@@ -215,15 +237,12 @@ export function parseSUA(suaTextOrBuffer) {
   const r05 = (byType['05'] || [])[0] || '';
   const r06 = (byType['06'] || [])[0] || '';
 
-  // Record 02 (header): positions validated in sample
   const registroPatronal = r02 ? sliceTrim(r02, 2, 13) : '';
   const rfc = r02 ? sliceTrim(r02, 14, 26) : '';
   const periodoRaw = r02 ? sliceTrim(r02, 26, 32) : '';
   const folioSUA = r02 ? sliceTrim(r02, 32, 38) : '';
 
   const periodo = toPeriodoYYYYMM(periodoRaw);
-
-  // razonSocial: best-effort window (adjust if needed)
   const razonSocial = r02 ? sliceTrim(r02, 38, 78) : '';
 
   const imss = parseRecord05IMSS(r05);
@@ -234,34 +253,188 @@ export function parseSUA(suaTextOrBuffer) {
 
   const trabajadoresCount = recordsCountByType['03'] || 0;
 
-  // data: include raw-ish useful pieces for debugging/auditing (NOT huge)
-  const data = {
-    periodoRaw,
-    record02: r02 ? { raw: r02 } : undefined,
-    record05: r05 ? { raw: r05 } : undefined,
-    record06: r06 ? { raw: r06 } : undefined,
-  };
-
   return {
     periodo,
     registroPatronal,
     rfc,
     razonSocial,
     folioSUA,
-
     tipoPago: r06Parsed.tipoPago || '',
     fechaAplicacion: r06Parsed.fechaAplicacion || '',
-
     imss,
-
     totalIMSS: +r06Parsed.totalIMSS.toFixed(2),
     totalAFORE: +r06Parsed.totalAFORE.toFixed(2),
     totalINFONAVIT,
     totalAPagar,
-
     trabajadoresCount,
     recordsCountByType,
-    data,
+  };
+}
+
+// ---------------------
+// Public API: response separada por formulario
+// ---------------------
+export function parseSUA(suaTextOrBuffer) {
+  const sua = parseSUAInternal(suaTextOrBuffer);
+
+  const source02 = 'SUA (record 02)';
+  const source05 = 'SUA (record 05)';
+  const source06 = 'SUA (record 06)';
+
+  const empresa = field(sua.razonSocial, source02);
+  const folioSUA = field(sua.folioSUA, source02);
+  const periodo = field(sua.periodo, source02);
+
+  const tipoPagoLabel = normalizeTipoPago(sua.tipoPago);
+  const tipoPago = field(tipoPagoLabel || '', tipoPagoLabel ? source06 : '');
+
+  const fechaPago = field(sua.fechaAplicacion || '', sua.fechaAplicacion ? source06 : '');
+
+  const { anio, mes } = deriveAnioMes(sua.periodo);
+  const anioPago = field(anio, anio ? 'DERIVABLE (periodo SUA)' : '');
+  const mesPago = field(mes, mes ? 'DERIVABLE (periodo SUA)' : '');
+  const bimestrePago = field(deriveBimestre(mes), mes ? 'DERIVABLE (mes de pago)' : '');
+
+  const noTrabajadores = field(sua.trabajadoresCount, 'SUA (conteo records 03)');
+
+  const totalIMSS = nfield(sua.totalIMSS, source06);
+  const totalAFORE = nfield(sua.totalAFORE, source06);
+  const totalINFONAVIT = nfield(sua.totalINFONAVIT, source06);
+  const totalAPagar = nfield(sua.totalAPagar, source06);
+
+  // ---------------- IMSS ----------------
+  const imss = {
+    datosEmpresa: {
+      empresa,
+      sucursal: field('', ''),
+      tipoPago,
+      folioSUA,
+      diaExpRiesgo: field('', ''),
+    },
+    datosPago: {
+      fechaPago,
+      banco: field('', ''),
+      noTrabajadores,
+      diasCotizados: field('', ''),
+      primaRiesgPag: field('', ''),
+      primaRiesgCOP: field('', ''),
+      smgPago: field('', ''),
+      anioPago,
+      mesPago,
+    },
+    conceptosPago: {
+      cuotaFija: nfield(sua.imss?.cuotaFija, source05),
+
+      // Tu UI IMSS pide Pat/Obr; con este layout (agregado) no se puede separar.
+      exec3SalMinPat: field('', ''),
+      exec3SalMinObr: field('', ''),
+      presDinPat: field('', ''),
+      presDinObr: field('', ''),
+      gastosMedPat: field('', ''),
+      gastosMedObr: field('', ''),
+
+      riesgosTrabajo: nfield(sua.imss?.riesgosTrabajo, source05),
+      invalidezVidaObr: nfield(sua.imss?.invalidezVida, source05),
+      guarderias: nfield(sua.imss?.guarderiasPrestSoc, source05),
+
+      baseTotal: nfield(sua.imss?.subtotalIMSS, source05),
+    },
+    actRec: {
+      actualizacion: nfield(sua.imss?.actualizacionIMSS, source05),
+      recargos: nfield(sua.imss?.recargosIMSS, source05),
+      importeTotal: totalIMSS,
+    },
+  };
+
+  // ---------------- RCV ----------------
+  const rcv = {
+    datosEmpresa: {
+      empresa,
+      sucursal: field('', ''),
+      tipoPago,
+      folioSUA,
+    },
+    datosPago: {
+      fechaPago,
+      banco: field('', ''),
+      noTrabajadores,
+      anioPago,
+      bimestrePago,
+    },
+    conceptosPago: {
+      retiro: field('', ''),
+      cesantiaVejezPat: field('', ''),
+      cesantiaVejezObr: field('', ''),
+    },
+    actRec: {
+      actualizacion: field('', ''),
+      recargos: field('', ''),
+      importeTotal: totalAFORE, // total RCV agregado (AFORE) disponible
+    },
+  };
+
+  // -------------- INFONAVIT --------------
+  const infonavit = {
+    datosEmpresa: {
+      empresa,
+      sucursal: field('', ''),
+      tipoPago,
+      folioSUA,
+    },
+    datosPago: {
+      fechaPago,
+      banco: field('', ''),
+      noTrabajadores,
+      anioPago,
+      bimestrePago,
+      noTrabAcred: field('', ''),
+    },
+    conceptosPago: {
+      aportSinCred: field('', ''),
+      aportConCred: field('', ''),
+      amortizacion: field('', ''),
+      subTotal: totalINFONAVIT, // total INFONAVIT agregado disponible
+    },
+    actRec: {
+      actualizacion: field('', ''),
+      recargos: field('', ''),
+      importeTotal: totalINFONAVIT,
+    },
+  };
+
+  return {
+    meta: {
+      sources: { sua: true },
+      sua: {
+        periodo: periodo.value,
+        folioSUA: folioSUA.value,
+        recordsCountByType: sua.recordsCountByType || {},
+      },
+      notes: [
+        'SUA-only: banco .',
+        'SUA-only: RCV no se puede desglosar Retiro/Cesantía Pat/Obr con el layout actual; solo total AFORE.',
+        'SUA-only: INFONAVIT no se puede desglosar con/sin crédito/amortización/#acreditados; solo total INFONAVIT.',
+        'SUA-only: IMSS Pat/Obr no se puede separar con el record 05 agregado; solo conceptos agregados disponibles.',
+      ],
+    },
+
+    // Separado por formulario
+    imss,
+    rcv,
+    infonavit,
+
+    // Útil para header/global
+    global: {
+      empresa,
+      folioSUA,
+      periodo,
+      tipoPago,
+      fechaPago,
+      totalIMSS,
+      totalAFORE,
+      totalINFONAVIT,
+      totalAPagar,
+    },
   };
 }
 
