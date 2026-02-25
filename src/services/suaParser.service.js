@@ -124,7 +124,7 @@ export function parseSUAForAllForms(suaTextOrBuffer) {
   const rfc = r02 ? sliceTrim(r02, 14, 26) : '';
   const periodoRaw = r02 ? sliceTrim(r02, 26, 32) : '';
   const folioSUA = r02 ? sliceTrim(r02, 32, 38) : '';
-  const razonSocial = r02 ? sliceTrim(r02, 38, 78) : '';
+  const razonSocial = r02 ? sliceTrim(r02, 38, 88) : '';
   const periodo = toPeriodoYYYYMM(periodoRaw);
 
   // Record 06 totals
