@@ -1,6 +1,6 @@
 import { ApiError, ErrorCodes } from '../utils/errors.js';
 import { previewXml, commitCaptura, commitCapturaBatch } from '../services/captura.service.js';
-import { parseSUA } from '../services/suaParser.service.js';
+import { parseSUAForAllForms } from '../services/suaParser.service.js';
 import { findCapturasList, findCapturaById } from '../repositories/captura.repo.js';
 import { getAccessibleCapturaScope } from '../services/access.service.js';
 import { getIdempotencyKey } from '../utils/idempotency.js';
@@ -38,7 +38,7 @@ export async function parseSuaHandler(req, res) {
     throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, 'suaText (query for GET, or body) or suaFile (multipart) required');
   }
   try {
-    const result = parseSUA(suaContent);
+    const result = parseSUAForAllForms(suaContent);
     res.json(result);
   } catch (err) {
     throw new ApiError(400, ErrorCodes.VALIDATION_ERROR, err.message || 'Invalid SUA content');
